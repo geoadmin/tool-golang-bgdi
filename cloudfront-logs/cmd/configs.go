@@ -36,6 +36,8 @@ func newPartionConfig(cmd *cobra.Command) (partitionConfig, error) {
 		conf.SqsQueueURL = "https://sqs.eu-central-1.amazonaws.com/839910802816/cloudfront-logs-partitioning-queue-manual"
 	case "swisstopo-bgdi":
 		conf.SqsQueueURL = "https://sqs.eu-central-1.amazonaws.com/993448060988/cloudfront-logs-partitioning-queue-manual"
+	default:
+		return conf, fmt.Errorf("invalid aws-profile %s. See --help for allowed values", conf.AwsProfile)
 	}
 
 	if len(cmd.Flag("timestamp-from").Value.String()) > 0 {

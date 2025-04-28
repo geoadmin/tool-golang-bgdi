@@ -16,11 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
-const defaultSqsBatchSize = 10
-const defaultSqsMessageRecords = 10
-const maxSqsBatchSize = 10
-const maxSqsMessageRecords = 100
-
 type S3Event struct {
 	S3 struct {
 		Bucket struct {
@@ -50,7 +45,7 @@ func NewSqsBasics(ctx context.Context, awsConfig aws.Config) *SqsBasics {
 }
 
 func (basics SqsBasics) PublishKeys(cfg partitionConfig, keys []string, metrics *metrics) error {
-	// Keys is a list of up to 1000 3s keys (filenames).
+	// Keys is a list of up to 1000 s3 keys (filenames).
 	for batchChunk := range slices.Chunk(keys, (cfg.SqsBatchSize * cfg.SqsMessageRecords)) {
 		timestamp := time.Now()
 

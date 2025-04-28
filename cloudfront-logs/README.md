@@ -1,4 +1,4 @@
-# TODO
+# cloudfront-logs
 
 AWS Codebuild CLI helper command to manually partition cloudfront logs
 

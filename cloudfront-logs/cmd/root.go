@@ -14,7 +14,6 @@ var rootCmd = &cobra.Command{
 	Long:  `BGDI CLI tool for cloudfront-logs management`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, _ []string) {
-
 		_ = cmd.Help()
 	},
 	CompletionOptions: cobra.CompletionOptions{
@@ -31,10 +30,12 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	os.Exit(0)
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringP("profile", "a", "", "AWS account (profile)")
+	rootCmd.PersistentFlags().StringP("profile", "a", "", `AWS account (profile).
+	One of ['swisstopo-bgdi', 'swisstopo-bgdi-dev']`)
 	rootCmd.PersistentFlags().StringP("bucket", "b", "", "S3 Bucket")
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Verbose print output")
 

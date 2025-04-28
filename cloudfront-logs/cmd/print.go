@@ -8,10 +8,10 @@ import (
 
 const numberOfSeparatorChars = 80
 
-func printStart(conf partitionConfig, metrics *metrics) {
+func printStart(conf partitionConfig, timeStart time.Time) {
 	lineSeparator := strings.Repeat("-", numberOfSeparatorChars)
 	fmt.Println(lineSeparator)
-	fmt.Printf("%s - Cloudfront logs partitioning starting\n\n", metrics.Timestamps.Start.Format("2006-01-02 15:04:05"))
+	fmt.Printf("%s - Cloudfront logs partitioning starting\n\n", timeStart.Format("2006-01-02 15:04:05"))
 	if conf.Verbose {
 		fmt.Printf(`
 Config:
@@ -44,58 +44,53 @@ Config:
 	fmt.Println(lineSeparator)
 }
 
-func printProgress(ticker *time.Ticker, metrics *metrics) {
+func printProgress(metrics *metrics) {
 	fmt.Print("\033[s") // save the cursor position
 
-	for range ticker.C {
-		// String built here to solve line-too-long linter problem when directly used in final print statement
-		metricsString := fmt.Sprintf("prefixes: %3d, pages: %5d, files (fetched: %7d, partitioned %7d, skipped %7d)",
-			metrics.Counters.Prefixes,
-			metrics.Counters.Pages,
-			metrics.Counters.Files.Fetched,
-			metrics.Counters.Files.Partitioned,
-			metrics.Counters.Files.Skipped,
-		)
-
-		fmt.Print("\033[G\033[K") // move the cursor left and clear the line
-		fmt.Printf("%s - Partitioning running: %s processed in %s",
-			time.Now().Format("2006-01-02 15:04:05"),
-			metricsString,
-			time.Since(metrics.Timestamps.Start).Round(time.Second).String(),
-		)
-	}
-}
-
-func printEnd(metrics *metrics, verbose bool) {
-	lineSeparator := strings.Repeat("-", numberOfSeparatorChars)
-
-	// String built here to solve line-too-long linter problem when directly used in final print statement
-	metricsString := fmt.Sprintf("prefixes: %3d, pages: %5d, files (fetched: %7d, partitioned %7d, skipped %7d)",
+	fmt.Print("\033[G\033[K") // move the cursor left and clear the line
+	fmt.Printf("%s - %3d prefixes, %5d pages, %8d files-fetched, %8d files-partitioned, %8d files-skipped, Duration: %s",
+		time.Now().Format("2006-01-02 15:04:05"),
 		metrics.Counters.Prefixes,
 		metrics.Counters.Pages,
 		metrics.Counters.Files.Fetched,
 		metrics.Counters.Files.Partitioned,
 		metrics.Counters.Files.Skipped,
+		time.Since(metrics.Timestamps.Start).Round(time.Millisecond),
 	)
+}
+
+func printEnd(metrics metrics, verbose bool) {
+	lineSeparator := strings.Repeat("-", numberOfSeparatorChars)
 
 	fmt.Println("")
 	fmt.Println(lineSeparator)
-	fmt.Printf("%s - Partitioning done:    %s processed in %s",
+	fmt.Printf("%s - Partitioning done in %s",
 		time.Now().Format("2006-01-02 15:04:05"),
-		metricsString,
-		time.Since(metrics.Timestamps.Start).Round(time.Second).String(),
+		metrics.Durations.Total.Round(time.Millisecond),
 	)
+
 	if verbose {
 		fmt.Printf(`
+	Counters
+		Prefixes                   : %8d
+		Pages                      : %8d
+		Files-fetched              : %8d
+		Files-partitioned          : %8d
+		Files-skipped              : %8d
 
-        Durations:
-        Fetch keys              : %s
-        Get keys to be partition: %s
-        Build SQS payload       : %s
-        Total                   : %s
+	Durations:
+		Fetch keys                 : %8s
+		Get keys to be partitioned : %8s
+		Build SQS payload          : %8s
+		Total                      : %8s
 
 `,
-			metrics.Durations.FetchKeys.Round(time.Millisecond),
+			metrics.Counters.Prefixes,
+			metrics.Counters.Pages,
+			metrics.Counters.Files.Fetched,
+			metrics.Counters.Files.Partitioned,
+			metrics.Counters.Files.Skipped,
+			metrics.Durations.Total.Round(time.Millisecond),
 			metrics.Durations.GetKeysToPartition.Round(time.Millisecond),
 			metrics.Durations.BuildSqsPayload.Round(time.Millisecond),
 			metrics.Durations.Total.Round(time.Millisecond),

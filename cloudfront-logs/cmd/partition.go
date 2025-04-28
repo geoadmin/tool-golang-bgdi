@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,28 +14,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
-// Struct which holds all metrics used for status updates
-type metrics struct {
-	Counters struct {
-		Files struct {
-			Fetched     int
-			Partitioned int
-			Skipped     int
-		}
-		Pages    int
-		Prefixes int
-	}
-	Durations struct {
-		FetchKeys          time.Duration
-		GetKeysToPartition time.Duration
-		BuildSqsPayload    time.Duration
-		SendSqsPayload     time.Duration
-		Total              time.Duration
-	}
-	Timestamps struct {
-		Start time.Time
-	}
-}
+const defaultSqsBatchSize = 10
+const defaultSqsMessageRecords = 10
+const maxSqsBatchSize = 10
+const maxSqsMessageRecords = 100
 
 // partition subcommand
 var partitionCmd = &cobra.Command{
@@ -51,32 +34,39 @@ Examples:
 	--verbose --dry-run
 `,
 	Args: cobra.ExactArgs(0),
-	Run: func(cmd *cobra.Command, _ []string) {
-		metrics := &metrics{}
-		metrics.Timestamps.Start = time.Now()
+	RunE: func(cmd *cobra.Command, _ []string) error {
 
+		timeStart := time.Now()
 		partitionConf, err := newPartionConfig(cmd)
 		if err != nil {
-			fmt.Println(err)
-			return
+			return err
 		}
 
-		printStart(partitionConf, metrics)
+		printStart(partitionConf, timeStart)
 
-		// Start a goroutine to printout status updates.
-		ticker := time.NewTicker(time.Second)
-		go printProgress(ticker, metrics)
+		// Collect metrics
+		ch := make(chan metrics)
+		var m metrics
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			m = collectMetrics(ch, timeStart)
+			wg.Done()
+		}()
 
 		// Do the partitioning work
-		err = runPartition(partitionConf, metrics)
+		err = runPartition(partitionConf, ch)
 		if err != nil {
-			fmt.Println(err)
-			return
+			return err
 		}
 
-		ticker.Stop()
-		metrics.Durations.Total = time.Since(metrics.Timestamps.Start)
-		printEnd(metrics, partitionConf.Verbose)
+		close(ch)
+		wg.Wait()
+
+		m.Durations.Total = time.Since(timeStart)
+		printEnd(m, partitionConf.Verbose)
+
+		return nil
 	},
 }
 
@@ -107,7 +97,7 @@ func init() {
 
 //-----------------------------------------------------------------------------
 
-func runPartition(partitionConfig partitionConfig, metrics *metrics) error {
+func runPartition(partitionConfig partitionConfig, ch chan metrics) error {
 	context := context.Background()
 
 	awsConfig, err := config.LoadDefaultConfig(
@@ -126,32 +116,35 @@ func runPartition(partitionConfig partitionConfig, metrics *metrics) error {
 	paginator := s3Basics.GetListObjectsPaginator(partitionConfig)
 
 	for paginator.HasMorePages() {
-		metrics.Counters.Pages++
+		m := metrics{}
+		m.Counters.Pages++
 		ts := time.Now()
 		page, e := paginator.NextPage(context)
 		if e != nil {
 			return e
 		}
-		metrics.Counters.Files.Fetched += len(page.Contents)
-		metrics.Durations.FetchKeys += time.Since(ts)
+		m.Counters.Files.Fetched += len(page.Contents)
+		m.Durations.FetchKeys += time.Since(ts)
 
 		ts = time.Now()
-		keys, e := getKeysToPartition(page.Contents, &partitionConfig, metrics)
+		keys, e := getKeysToPartition(page.Contents, &partitionConfig, &m)
 		if e != nil {
 			return e
 		}
-		metrics.Counters.Files.Skipped += len(page.Contents) - len(keys)
-		metrics.Durations.GetKeysToPartition += time.Since(ts)
+		m.Counters.Files.Skipped += len(page.Contents) - len(keys)
+		m.Durations.GetKeysToPartition += time.Since(ts)
 
 		ts = time.Now()
 		if !partitionConfig.DryRun {
-			err = sqsBasics.PublishKeys(partitionConfig, keys, metrics)
+			err = sqsBasics.PublishKeys(partitionConfig, keys, &m)
 			if err != nil {
 				return err
 			}
 		}
-		metrics.Durations.SendSqsPayload += time.Since(ts)
-		metrics.Counters.Files.Partitioned += len(keys)
+		m.Durations.SendSqsPayload += time.Since(ts)
+		m.Counters.Files.Partitioned += len(keys)
+
+		ch <- m
 	}
 
 	return nil
