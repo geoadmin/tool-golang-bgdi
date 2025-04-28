@@ -50,7 +50,7 @@ func printProgress(metrics *metrics) {
 	fmt.Print("\033[G\033[K") // move the cursor left and clear the line
 	fmt.Printf("%s - %3d prefixes, %5d pages, %8d files-fetched, %8d files-partitioned, %8d files-skipped, Duration: %s",
 		time.Now().Format("2006-01-02 15:04:05"),
-		metrics.Counters.Prefixes,
+		len(metrics.Prefixes),
 		metrics.Counters.Pages,
 		metrics.Counters.Files.Fetched,
 		metrics.Counters.Files.Partitioned,
@@ -85,7 +85,7 @@ func printEnd(metrics metrics, verbose bool) {
 		Total                      : %8s
 
 `,
-			metrics.Counters.Prefixes,
+			len(metrics.Prefixes),
 			metrics.Counters.Pages,
 			metrics.Counters.Files.Fetched,
 			metrics.Counters.Files.Partitioned,
@@ -96,5 +96,10 @@ func printEnd(metrics metrics, verbose bool) {
 			metrics.Durations.Total.Round(time.Millisecond),
 		)
 	}
+	fmt.Println("	Prefixes")
+	for _, prefix := range metrics.Prefixes {
+		fmt.Printf("		%s\n", prefix)
+	}
+
 	fmt.Println(lineSeparator)
 }
