@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -71,8 +72,8 @@ Examples:
 }
 
 var (
-	timestampPattern = `^.*(?P<dateHour>\d\d\d\d\-\d\d\-\d\d\-\d\d).*$`
-	timestampRe      = regexp.MustCompile(timestampPattern)
+	keyPattern = `^(?P<prefix>.*)/\w+\.(?P<dateHour>\d\d\d\d\-\d\d\-\d\d\-\d\d).*$`
+	keyRe      = regexp.MustCompile(keyPattern)
 )
 
 //-----------------------------------------------------------------------------
@@ -152,14 +153,21 @@ func runPartition(partitionConfig partitionConfig, ch chan metrics) error {
 
 func getKeysToPartition(contents []types.Object, conf *partitionConfig, metrics *metrics) ([]string, error) {
 	keys := []string{}
+	prefixes := []string{}
 
 	for _, obj := range contents {
 		key := *obj.Key
 
-		matches := timestampRe.FindStringSubmatch(key)
+		matches := keyRe.FindStringSubmatch(key)
 		switch {
 		case matches != nil: // Timestamp found
-			timestamp, err := parseTimestamp(matches[1])
+			prefix := matches[1]
+			if !slices.Contains(prefixes, prefix) {
+				prefixes = append(prefixes, prefix)
+			}
+
+			timestamp, err := parseTimestamp(matches[2])
+
 			if err != nil {
 				return []string{}, err
 			}
@@ -171,11 +179,13 @@ func getKeysToPartition(contents []types.Object, conf *partitionConfig, metrics 
 				keys = append(keys, key)
 			}
 		case strings.HasSuffix(key, "/"): // Prefix
-			metrics.Counters.Prefixes++
+			continue
 		default: // Error
 			return []string{}, fmt.Errorf("invalid key name: %s", key)
 		}
 	}
+
+	metrics.Prefixes = prefixes
 
 	return keys, nil
 }

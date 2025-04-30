@@ -1,6 +1,9 @@
 package cmd
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 type metrics struct {
 	Counters struct {
@@ -9,8 +12,7 @@ type metrics struct {
 			Partitioned int
 			Skipped     int
 		}
-		Pages    int
-		Prefixes int
+		Pages int
 	}
 	Durations struct {
 		FetchKeys          time.Duration
@@ -22,6 +24,7 @@ type metrics struct {
 	Timestamps struct {
 		Start time.Time
 	}
+	Prefixes []string
 }
 
 func collectMetrics(ch chan metrics, timeStart time.Time) metrics {
@@ -39,8 +42,12 @@ func collectMetrics(ch chan metrics, timeStart time.Time) metrics {
 		m.Counters.Files.Partitioned += metric.Counters.Files.Partitioned
 		m.Counters.Files.Skipped += metric.Counters.Files.Skipped
 		m.Counters.Pages += metric.Counters.Pages
-		m.Counters.Prefixes += metric.Counters.Prefixes
 
+		for _, prefix := range metric.Prefixes {
+			if !slices.Contains(m.Prefixes, prefix) {
+				m.Prefixes = append(m.Prefixes, prefix)
+			}
+		}
 		printProgress(&m)
 	}
 
